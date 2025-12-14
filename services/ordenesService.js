@@ -21,26 +21,20 @@ const crearOrdenCompleta = async (datosOrden) => {
         // Consulta: id_boleto (se asume que existe el id), id_cajero_cobro, total_orden, estado
         const ordenBoletoQuery = `
             INSERT INTO orden (id_boleto, id_mesero, id_cajero_cobro, fecha_hora, total_orden, estado)
-            VALUES ($1, NULL, $2, NOW(), $3, $4) 
+            VALUES ($1, $2, $3, NOW(), $4, $5) 
             RETURNING id_orden;
         `;
         
-        // NOTA: Para que esto funcione, DEBES tener un id_boleto real de una tabla 'boleto'
-        // ya insertada. Como no tenemos la lógica de asiento/boleto aquí, asumimos que
-        // la columna id_boleto en la tabla 'orden' puede ser NULL temporalmente,
-        // o que tienes una lógica para crear el boleto primero (que falta en este servicio).
-        
         for (const boleto of boletos) {
             
-            // *** AQUÍ DEBERÍA IR LA LÓGICA DE INSERCIÓN EN LA TABLA BOLETO ***
-            // Para la prueba, asumiremos que id_boleto en 'orden' puede ser NULL (ya lo pusiste como NULL en tu DDL).
-            const id_boleto_real = null; 
+            const id_boleto_real = null; // Asumiendo que sigue siendo NULL
             
             total_venta_registrado += boleto.precio;
 
-            // $1: id_boleto (NULL), $2: id_cajero_cobro, $3: total_orden, $4: estado (ENUM)
+            // $1: id_boleto, $2: id_mesero (USAMOS EL CAJERO), $3: id_cajero_cobro, $4: total_orden, $5: estado
             const resOrden = await client.query(ordenBoletoQuery, [
                 id_boleto_real,
+                id_usuario_cajero, // <-- ¡Aquí se asigna el ID del cajero!
                 id_usuario_cajero,
                 boleto.precio,
                 'Pagada' // Usamos el ENUM 'Pagada'
@@ -48,7 +42,7 @@ const crearOrdenCompleta = async (datosOrden) => {
             
             ids_orden_registrados.push(resOrden.rows[0].id_orden);
         }
-
+        
         // ----------------------------------------------------------------------
         // 3. REGISTRAR COMIDA: Crear una fila en la tabla 'orden' por cada artículo de comida
         // ----------------------------------------------------------------------
