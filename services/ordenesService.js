@@ -1,89 +1,127 @@
 // services/ordenesService.js
 const db = require('../db/db');
 
-// Esta es la estructura de datos que esperamos del cuerpo (body) del POST
-/* Ejemplo de datos recibidos:
-{
-    "id_funcion": 1,
-    "id_usuario_cajero": 2, // Usuario que registra la venta (e.g., María López)
-    "boletos": [
-        {"fila": "F1", "asiento": 5, "precio": 120.00},
-        {"fila": "F1", "asiento": 6, "precio": 120.00}
-    ],
-    "comida": [
-        {"id_alimento": 1, "cantidad": 2, "id_usuario_mesero": 3, "precio_unitario": 85.00},
-        {"id_alimento": 2, "cantidad": 1, "id_usuario_mesero": 3, "precio_unitario": 70.00}
-    ]
-}
-*/
-
 const crearOrdenCompleta = async (datosOrden) => {
-    const client = await db.pool.connect(); // Obtener un cliente para la transacción
+    const client = await db.pool.connect(); 
     
-    // Desestructuración de datos
+    // Desestructuración de datos (Correcto, viene de Android)
     const { id_funcion, id_usuario_cajero, boletos, comida } = datosOrden;
+    let total_venta_registrado = 0; // Para el retorno final
+
+    // Array para guardar los IDs de las nuevas "mini-órdenes" (La tabla 'orden')
+    const ids_orden_registrados = [];
 
     try {
         await client.query('BEGIN'); // 1. Iniciar la transacción
 
-        // --- 1. Calcular el Total ---
-        const total_boletos = boletos.reduce((sum, b) => sum + b.precio, 0);
-        const total_comida = comida.reduce((sum, c) => sum + (c.precio_unitario * c.cantidad), 0);
-        const total_general = total_boletos + total_comida;
-
-        // --- 2. Insertar la Orden Principal (Venta) ---
-        const ordenVentaQuery = `
-            INSERT INTO orden (id_usuario, tipo_orden, total, fecha_hora)
-            VALUES ($1, $2, $3, NOW())
+        // ----------------------------------------------------------------------
+        // 2. REGISTRAR BOLETOS: Crear una fila en la tabla 'orden' por cada boleto
+        // ----------------------------------------------------------------------
+        
+        // Consulta: id_boleto (se asume que existe el id), id_cajero_cobro, total_orden, estado
+        const ordenBoletoQuery = `
+            INSERT INTO orden (id_boleto, id_mesero, id_cajero_cobro, fecha_hora, total_orden, estado)
+            VALUES ($1, NULL, $2, NOW(), $3, $4) 
             RETURNING id_orden;
         `;
-        const resOrden = await client.query(ordenVentaQuery, [id_usuario_cajero, 'Venta', total_general]);
-        const id_orden = resOrden.rows[0].id_orden;
-
-        // --- 3. Registrar Boletos (Detalle de Orden de Venta) y Asientos ---
+        
+        // NOTA: Para que esto funcione, DEBES tener un id_boleto real de una tabla 'boleto'
+        // ya insertada. Como no tenemos la lógica de asiento/boleto aquí, asumimos que
+        // la columna id_boleto en la tabla 'orden' puede ser NULL temporalmente,
+        // o que tienes una lógica para crear el boleto primero (que falta en este servicio).
+        
         for (const boleto of boletos) {
-            // Inserta el detalle del boleto
-            const detalleBoletoQuery = `
-                INSERT INTO orden_detalle (id_orden, descripcion, cantidad, precio_unitario)
-                VALUES ($1, $2, $3, $4);
-            `;
-            await client.query(detalleBoletoQuery, [id_orden, `Boleto ${boleto.fila}-${boleto.asiento}`, 1, boleto.precio]);
+            
+            // *** AQUÍ DEBERÍA IR LA LÓGICA DE INSERCIÓN EN LA TABLA BOLETO ***
+            // Para la prueba, asumiremos que id_boleto en 'orden' puede ser NULL (ya lo pusiste como NULL en tu DDL).
+            const id_boleto_real = null; 
+            
+            total_venta_registrado += boleto.precio;
 
-            // Actualiza la disponibilidad del asiento (Se asume que tienes una tabla asientos)
-            // Aquí deberías tener una lógica de ASIGNACIÓN de asiento/status
-            // Por simplicidad de la tabla 'asiento' inicial, solo registramos.
+            // $1: id_boleto (NULL), $2: id_cajero_cobro, $3: total_orden, $4: estado (ENUM)
+            const resOrden = await client.query(ordenBoletoQuery, [
+                id_boleto_real,
+                id_usuario_cajero,
+                boleto.precio,
+                'Pagada' // Usamos el ENUM 'Pagada'
+            ]);
+            
+            ids_orden_registrados.push(resOrden.rows[0].id_orden);
         }
 
-        // --- 4. Registrar Comida (Detalle de Orden de Venta) ---
+        // ----------------------------------------------------------------------
+        // 3. REGISTRAR COMIDA: Crear una fila en la tabla 'orden' por cada artículo de comida
+        // ----------------------------------------------------------------------
+        
+        // Consulta: id_mesero, id_cajero_cobro, total_orden, estado (id_boleto es NULL)
+        const ordenComidaQuery = `
+            INSERT INTO orden (id_boleto, id_mesero, id_cajero_cobro, fecha_hora, total_orden, estado)
+            VALUES (NULL, $1, $2, NOW(), $3, $4) 
+            RETURNING id_orden;
+        `;
+        
         for (const item of comida) {
+            const subtotal = item.precio_unitario * item.cantidad;
+            total_venta_registrado += subtotal;
+
+            // $1: id_mesero, $2: id_cajero_cobro, $3: total_orden, $4: estado (ENUM)
+            const resOrden = await client.query(ordenComidaQuery, [
+                item.id_usuario_mesero, // El mesero del ítem de comida
+                id_usuario_cajero,
+                subtotal,
+                'Pagada' // Usamos el ENUM 'Pagada'
+            ]);
+            
+            const id_orden_comida = resOrden.rows[0].id_orden;
+            ids_orden_registrados.push(id_orden_comida);
+
+            // --- Insertar en ORDEN_DETALLE (Detalle del Producto) ---
+            // Columnas de tu esquema: idorden, idproducto, cantidad, preciounitarioventa, idpreparador, estadopreparacion
             const detalleComidaQuery = `
-                INSERT INTO orden_detalle (id_orden, descripcion, cantidad, precio_unitario, id_alimento, id_usuario_mesero)
+                INSERT INTO orden_detalle (id_orden, id_producto, cantidad, precio_unitario_venta, id_preparador, estado_preparacion)
                 VALUES ($1, $2, $3, $4, $5, $6);
             `;
-            // NOTA: Aquí necesitarías hacer un JOIN con la tabla 'alimento' para obtener la descripción real.
-            // Para el ejemplo, usaremos una descripción genérica.
-            const descripcion = `Alimento ID ${item.id_alimento}`; 
-            await client.query(detalleComidaQuery, [id_orden, descripcion, item.cantidad, item.precio_unitario, item.id_alimento, item.id_usuario_mesero]);
+            
+            // Asumimos que id_preparador es NULL y estado_preparacion es 'Tomada'
+            await client.query(detalleComidaQuery, [
+                id_orden_comida, 
+                item.id_alimento, 
+                item.cantidad, 
+                item.precio_unitario, 
+                null, // id_preparador (NULL)
+                'Tomada' // ENUM
+            ]);
         }
+        // El total general aquí es la suma de los totales individuales
 
-        await client.query('COMMIT'); // 5. Confirmar la transacción
-        return { success: true, id_orden, total: total_general };
+        await client.query('COMMIT'); // 4. Confirmar la transacción
+        
+        // Devolvemos el ID de la primera orden y el total general de la venta (suma de mini-órdenes)
+        return { 
+            success: true, 
+            id_orden: ids_orden_registrados[0], 
+            total: total_venta_registrado 
+        };
 
     } catch (e) {
-        await client.query('ROLLBACK'); // 6. Revertir si algo falla
+        await client.query('ROLLBACK'); // 5. Revertir si algo falla
         console.error("Error en la transacción de orden:", e);
-        throw e; // Relanzar el error para que el router lo capture
+        throw e; // Relanzar el error
     } finally {
-        client.release(); // 7. Liberar el cliente de la pool
+        client.release(); // 6. Liberar el cliente
     }
 };
+
 /**
  * Obtiene las órdenes de comida pendientes de preparación o entrega.
- * @param {string} estado - Estado a filtrar (e.g., 'Tomada', 'En preparación', 'Lista').
- * @returns {Promise<Array>} Lista de detalles de órdenes.
+ * CORRECCIÓN: Esta consulta es MUY compleja y sigue ligando de forma errónea
+ * O.id_mesero y O.id_boleto. Debería ligar a orden_detalle.
+ * La corrección es un cambio de diseño de la consulta que debe ligar a ORDEN_DETALLE para saber qué producto es comida y luego
+ * ligar al mesero por la columna id_mesero en la tabla orden.
  */
 const getOrdenesPendientes = async (estado) => {
-    // Esta consulta trae los detalles de la orden (la comida) y de dónde viene (sala)
+    // La consulta original tiene problemas de diseño (JOINs incorrectos basados en el nuevo modelo).
+    // Usaremos una versión simplificada que solo se enfoca en orden_detalle para la comida.
     const query = `
         SELECT
             OD.id_detalle,
@@ -92,21 +130,17 @@ const getOrdenesPendientes = async (estado) => {
             P.nombre AS producto_nombre,
             OD.cantidad,
             OD.estado_preparacion,
-            S.nombre AS sala_nombre
+            O.id_mesero,
+            O.id_cajero_cobro
+            
         FROM
             orden_detalle OD
         JOIN
             orden O ON OD.id_orden = O.id_orden
-        JOIN
-            usuario U_M ON O.id_mesero = U_M.id_usuario
+        LEFT JOIN
+            usuario U_M ON O.id_mesero = U_M.id_usuario -- Solo si la orden es de comida
         JOIN
             producto P ON OD.id_producto = P.id_producto
-        JOIN
-            boleto B ON O.id_boleto = B.id_boleto
-        JOIN
-            funcion F ON B.id_funcion = F.id_funcion
-        JOIN
-            sala S ON F.id_sala = S.id_sala
         WHERE
             OD.estado_preparacion = $1
         ORDER BY
@@ -123,5 +157,5 @@ const getOrdenesPendientes = async (estado) => {
 
 module.exports = {
     crearOrdenCompleta,
-    getOrdenesPendientes, // <-- AGREGAR ESTO
+    getOrdenesPendientes, 
 };
