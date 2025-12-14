@@ -1,4 +1,4 @@
-// routes/authRouter.js
+// routes/authRoutes.js
 const express = require('express');
 const router = express.Router();
 const db = require('../db/db'); // Asume que tienes tu pool de db aquí

@@ -10,6 +10,7 @@ const funcionesRoutes = require('./routes/funcionesRoutes');
 const ordenesRoutes = require('./routes/ordenesRoutes'); 
 const asientosRoutes = require('./routes/asientosRoutes'); // <-- AÑADIR ESTO
 const menuRoutes = require('./routes/menuRoutes');         // <-- AÑADIR ESTO
+const authRouter = require('./routes/authRoutes');
 
 // Middlewares
 app.use(cors()); 
@@ -20,6 +21,7 @@ app.use('/api/funciones', funcionesRoutes);
 app.use('/api/ordenes', ordenesRoutes);
 app.use('/api/asientos', asientosRoutes); // <-- AÑADIR ESTO
 app.use('/api/menu', menuRoutes);         // <-- AÑADIR ESTO
+app.use('/auth', authRouter);       // Ej: /auth/login <-- Nueva ruta
 
 // Ruta de prueba
 app.get('/', (req, res) => {
