@@ -37,8 +37,7 @@ router.post('/login', async (req, res) => {
                 success: true,
                 id_usuario: user.id_usuario,
                 nombre: user.nombre,
-                id_rol: user.id_rol,
-                token: "FAKE_TOKEN" // Puedes usar un token real después si implementas JWT
+                id_rol: user.id_rol
             });
         } else {
             // Usuario no encontrado o credenciales incorrectas
