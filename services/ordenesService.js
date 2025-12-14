@@ -112,5 +112,4 @@ const crearOrdenCompleta = async (datosOrden) => {
 
 module.exports = {
     crearOrdenCompleta,
-    getOrdenesPendientes, 
 };
