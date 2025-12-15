@@ -129,7 +129,7 @@ const crearSoloOrdenComida = async ({ id_cajero, total, metodo_pago, productos }
             return client.query(
                 `INSERT INTO orden_detalle (id_orden, id_producto, cantidad, precio_unitario_venta, estado_preparacion)
                  VALUES ($1, $2, $3, $4, 'Tomada');`,
-                [id_orden, p.idProducto, p.cantidad, p.precio] 
+                [id_orden, p.id_producto, p.cantidad, p.precio] 
             );
         });
         await Promise.all(detalleQueries);
