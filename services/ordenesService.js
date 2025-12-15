@@ -106,10 +106,58 @@ const crearOrdenCompleta = async (datosOrden) => {
     } finally {
         client.release(); 
     }
+
+    
+};
+
+const crearSoloOrdenComida = async ({ id_cajero, total, metodo_pago, productos }) => {
+    const client = await db.pool.connect(); 
+    try {
+        await client.query('BEGIN'); // 1. Iniciar la transacción
+
+        // A. INSERTAR EN TABLA ORDEN
+        const ordenQuery = `
+            INSERT INTO orden (id_boleto, id_mesero, id_cajero_cobro, fecha_hora, total_orden, estado)
+            VALUES (NULL, $1, $1, NOW(), $2, 'Pagada') 
+            RETURNING id_orden;
+        `;
+        const ordenResult = await client.query(ordenQuery, [id_cajero, total]);
+        const id_orden = ordenResult.rows[0].id_orden;
+
+        // B. INSERTAR EN TABLA ORDEN_DETALLE
+        const detalleQueries = productos.map(p => {
+            return client.query(
+                `INSERT INTO orden_detalle (id_orden, id_producto, cantidad, precio_unitario_venta, estado_preparacion)
+                 VALUES ($1, $2, $3, $4, 'Tomada');`,
+                [id_orden, p.idProducto, p.cantidad, p.precio] 
+            );
+        });
+        await Promise.all(detalleQueries);
+
+        // C. INSERTAR EN TABLA PAGO
+        const pagoQuery = `
+            INSERT INTO pago (id_orden, monto, metodo, fecha_pago)
+            VALUES ($1, $2, $3, NOW());
+        `;
+        await client.query(pagoQuery, [id_orden, total, metodo_pago]);
+        
+        await client.query('COMMIT'); 
+        
+        return id_orden;
+
+    } catch (error) {
+        await client.query('ROLLBACK'); 
+        console.error("Transacción fallida al crear orden de comida:", error);
+        throw new Error("Error en la BD al registrar la orden de comida.");
+
+    } finally {
+        client.release();
+    }
 };
 
 // ... (getOrdenesPendientes se queda igual o se elimina si no se usa)
 
 module.exports = {
     crearOrdenCompleta,
+    crearSoloOrdenComida,
 };

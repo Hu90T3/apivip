@@ -26,6 +26,45 @@ router.post('/', async (req, res) => {
         res.status(500).json({ error: "Error al procesar la transacción de la orden." });
     }
 });
+
+// ------------------------------------------------------------------
+// NUEVO ENDPOINT: POST /api/ordenes/crear-orden (Venta SOLO COMIDA)
+// ------------------------------------------------------------------
+router.post('/crear-orden', async (req, res) => {
+    // El cuerpo JSON viene de NuevoOrdenRequest
+    const { id_cajero, total, metodo_pago, productos } = req.body; 
+
+    if (!id_cajero || !total || !metodo_pago || !productos || productos.length === 0) {
+        return res.status(400).json({ 
+            success: false, 
+            message: "Faltan datos requeridos para la orden de comida." 
+        });
+    }
+
+    try {
+        const id_orden = await ordenesService.crearSoloOrdenComida({
+            id_cajero,
+            total,
+            metodo_pago,
+            productos
+        });
+
+        res.status(201).json({ 
+            success: true, 
+            message: `Orden de comida #${id_orden} creada exitosamente.`,
+            id_orden: id_orden 
+        });
+
+    } catch (error) {
+        console.error("Error al procesar la orden de comida:", error);
+        res.status(500).json({ 
+            success: false, 
+            message: error.message || "Error interno del servidor al crear la orden de comida." 
+        });
+    }
+});
+
+
 // GET /api/ordenes/pendientes/:estado
 // Permite al staff (Cocina/Mesero) ver órdenes filtradas por estado (e.g., 'Tomada', 'En preparación', 'Lista').
 router.get('/pendientes/:estado', async (req, res) => {
