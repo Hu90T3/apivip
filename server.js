@@ -11,6 +11,8 @@ const ordenesRoutes = require('./routes/ordenesRoutes');
 const asientosRoutes = require('./routes/asientosRoutes'); // <-- AÑADIR ESTO
 const menuRoutes = require('./routes/menuRoutes');         // <-- AÑADIR ESTO
 const authRouter = require('./routes/authRoutes');
+const usuariosRoutes = require('./routes/usuariosRoutes'); // <-- Nuevo import
+
 
 // Middlewares
 app.use(cors()); 
@@ -22,6 +24,7 @@ app.use('/api/ordenes', ordenesRoutes);
 app.use('/api/asientos', asientosRoutes); // <-- AÑADIR ESTO
 app.use('/api/menu', menuRoutes);         // <-- AÑADIR ESTO
 app.use('/auth', authRouter);       // Ej: /auth/login <-- Nueva ruta
+app.use('/api/usuarios', usuariosRoutes); // <-- ¡NUEVA RUTA!
 
 // Ruta de prueba
 app.get('/', (req, res) => {
